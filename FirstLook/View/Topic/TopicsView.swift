@@ -8,53 +8,20 @@
 import SwiftUI
 import Kingfisher
 
+// MARK: - 主视图
 struct TopicsView: View {
     @EnvironmentObject private var vm: ViewModel
-    @State private var needsRefresh = true
-    @State private var selectedTopic:Topic?
-    
+    @State private var selectedTopic: Topic?
     
     var body: some View {
-        NavigationStack{
-            ScrollView {
-                ForEach(vm.topics, id: \.id) { topic in
-                    VStack(alignment: .leading,spacing: 16) {
-                        VStack(alignment: .leading, spacing:6) {
-                            Text(topic.slug.capitalized)
-                                .font(.title2)
-                                .bold()
-                                .onTapGesture {
-                                    selectedTopic = topic
-                                }
-                            Text(topic.topicDescription ?? "No description available")
-                                .font(.subheadline)
-                                .lineLimit(1)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.trailing,16)
-                        if let photos = vm.topicPhotos[topic.id], !photos.isEmpty {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    ForEach(photos.prefix(6), id: \.id) { photo in
-                                        NavigationLink(destination: DetailView(photo: photo).toolbar(.hidden,for: .tabBar)) {
-                                            TopicPhotoView(photo: photo)
-                                                .environmentObject(vm)
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            ProgressView("加载图片中...")
-                        }
-                    }
-                    .padding(.top,12)
-                    .padding(.leading,16)
-                    .onAppear {
-                        Task {
-                            await vm.fetchTopicPhotos(topic: topic, page: 1)
-                        }
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    ForEach(vm.topics, id: \.id) { topic in
+                        topicSection(for: topic)
                     }
                 }
+                .padding(.horizontal, 16)
             }
             .navigationBarTitle("Topics")
         }
@@ -62,23 +29,93 @@ struct TopicsView: View {
             TopicDatailView(topic: topic)
         }
         .onAppear {
-            print("TopicsView appeared")
             vm.loadFavoritePhotos()
         }
     }
-}
-
-struct TopicPhotoView: View {
-    @EnvironmentObject private var vm: ViewModel
-    let photo: TopicPhoto
     
-    var body: some View {
-        KFImage(URL(string: photo.urls.thumb))
-            .resizable()
-            .aspectRatio(contentMode: .fill)
-            .frame(width: 140,height: 200)
-            .clipped()
-            .cornerRadius(10)
+    // MARK: - 主题区块
+    private func topicSection(for topic: Topic) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            topicPhotos(for: topic)
+        }
+    }
+    
+    // MARK: - 主题照片
+    private func topicPhotos(for topic: Topic) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(vm.topicPhotos[topic.id, default: []].prefix(6).enumerated()), id: \.element.id) { index, photo in
+                    if index == 0 {
+                        NavigationLink(destination: TopicDatailView(topic: topic).toolbar(.hidden, for: .tabBar)) {
+                            topicPhotoView(photo: photo, isFirstPhoto: true, topic: topic)
+                        }
+                    } else {
+                        NavigationLink(destination: ImageDetailView(photo: photo).toolbar(.hidden, for: .tabBar)) {
+                            topicPhotoView(photo: photo, isFirstPhoto: false, topic: nil)
+                        }
+                    }
+                }
+                
+                // 添加灰色矩形
+                NavigationLink(destination: TopicDatailView(topic: topic).toolbar(.hidden, for: .tabBar)) {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 140, height: 200)
+                        .cornerRadius(16)
+                        .overlay(
+                            Image(systemName: "arrow.right.circle")
+                                .font(.system(size: 30))
+                                .foregroundColor(.white)
+                        )
+                }
+            }
+        }
+        .onAppear {
+            if vm.topicPhotos[topic.id] == nil {
+                Task {
+                    await vm.fetchTopicPhotos(topic: topic, page: 1)
+                }
+            }
+        }
+    }
+    
+    // MARK: - 主题照片视图
+    private func topicPhotoView(photo: TopicPhoto, isFirstPhoto: Bool, topic: Topic?) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            KFImage(URL(string: photo.urls.thumb))
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: isFirstPhoto ? UIScreen.main.bounds.width / 2 + 80 : 140, height: isFirstPhoto ? 200 : 200)
+                .clipped()
+                .cornerRadius(16)
+                .overlay(
+                    Group {
+                        if isFirstPhoto, let topic = topic {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(topic.slug.capitalized)
+                                    .font(.title3)
+                                    .bold()
+                                    .foregroundColor(.white)
+                                Text(topic.topicDescription ?? "No description available")
+                                    .font(.callout)
+                                    .lineLimit(1)
+                                    .foregroundColor(.white.opacity(0.8))
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                            .background(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [.clear, .black.opacity(0.8)]),
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                                .cornerRadius(16)
+
+                            )
+                        }
+                    }
+                )
+        }
     }
 }
 

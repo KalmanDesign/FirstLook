@@ -32,10 +32,12 @@ struct TopicDatailView: View {
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 12)
                     WaterfallGrid(vm.topicPhotos[topic.id] ?? []) { photo in
-                        KFImage(URL(string: photo.urls.regular)!)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .cornerRadius(8)
+                        NavigationLink(destination: ImageDetailView(photo: photo).navigationBarBackButtonHidden(true)) {
+                            KFImage(URL(string: photo.urls.regular)!)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .cornerRadius(8)
+                        }
                     }
                     .padding(.horizontal, 12)
                 }
@@ -51,7 +53,7 @@ struct TopicDatailView: View {
 struct TopicCover: View {
     let photo: TopicPhoto?
     @Environment(\.colorScheme) private var colorScheme
-
+    
     var body: some View {
         if let photo = photo, let imageURL = URL(string: photo.urls.regular) {
             KFImage(imageURL)

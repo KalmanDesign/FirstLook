@@ -19,14 +19,14 @@ struct ListView: View {
         NavigationStack {
             ScrollView {
                 WaterfallGrid(vm.photos) { photo in
-                    NavigationLink(destination: DetailView(photo: photo).toolbar(.hidden, for: .tabBar)) {
+                    NavigationLink(destination: ImageDetailView(photo: photo).toolbar(.hidden, for: .tabBar) .navigationBarBackButtonHidden(true)) {
                         KFImage(URL(string: photo.urls.thumb))
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .clipped()
                             .cornerRadius(8)
                     }
-                    
+                   
                 }
                 .gridStyle(columns: isGridView ? 1 : 2, spacing: 8)
                 .padding(.horizontal, 8)

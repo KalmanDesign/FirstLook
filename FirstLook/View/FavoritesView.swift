@@ -13,6 +13,8 @@ import WaterfallGrid
 struct FavoritesView: View {
     @EnvironmentObject private var vm: ViewModel
     
+    
+    
     var body: some View {
         NavigationStack {
             ScrollView(.vertical, showsIndicators: false) {
@@ -20,7 +22,7 @@ struct FavoritesView: View {
                     emptyStateView
                 } else {
                     WaterfallGrid(vm.favoritePhotos, id: \.id) { photo in
-                        NavigationLink(destination: DetailView(photo: photo).toolbar(.hidden, for: .tabBar)) {
+                        NavigationLink(destination: ImageDetailView(photo: photo).toolbar(.hidden, for: .tabBar).navigationBarBackButtonHidden(true)) {
                             KFImage(URL(string: photo.urls.small))
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
@@ -34,15 +36,6 @@ struct FavoritesView: View {
             }
             .padding(.top,12)
             .navigationTitle("Favorite")
-//            .toolbar {
-//                ToolbarItem(placement: .navigationBarTrailing) {
-//                    Button(action: {
-//                        vm.unfavoriteAllPhotos()
-//                    }) {
-//                        Text("清空收藏")
-//                    }
-//                }
-//            }
             .onAppear {
                 print("FavoritesView onAppear")
                 vm.loadFavoritePhotos()
