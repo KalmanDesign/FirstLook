@@ -50,6 +50,8 @@ class ViewModel: ObservableObject {
             await fetchRandomPhotoFromAPI(count: 30) // 从 API 获取 30 张随机照片
         }
         isLoading = false
+        
+        
     }
     
     // 从本地数据库获取所有照片
@@ -57,7 +59,7 @@ class ViewModel: ObservableObject {
         let descriptor = FetchDescriptor<FirstLook>(sortBy: [SortDescriptor(\.id)])
         do {
             photos = try modelContext.fetch(descriptor) // 从本地数据库获取所有 FreshLook 对象,同时将新照片添加到 photos 数组中，确保 UI 立即更新
-            print("从本地获取到 \(photos.count) 张照片")
+            print("本地获取到 \(photos.count) 张照片")
             for photo in photos {
                 print("本地照片 ID: \(photo.id)")
             }
@@ -79,6 +81,13 @@ class ViewModel: ObservableObject {
                 photos.append(newFreshLook)       // 同时将新照片添加到 photos 数组中，确保 UI 立即更新。
                 print("ViewModel: 插入新照片: \(photo.id)")
             }
+            for photo in newPhotos {
+                let newFreshLook = FirstLook(id: photo.id, urls: photo.urls, user: photo.user)
+                modelContext.insert(newFreshLook)
+                photos.append(newFreshLook)
+                print("ViewModel: 插入新照片: \(photo.id), portfolioUrl: \(photo.user.portfolioUrl ?? "No portfolio")")
+            }
+            
             
             try modelContext.save()
             print("ViewModel: 保存 \(newPhotos.count) 张新照片到本地")
@@ -89,12 +98,13 @@ class ViewModel: ObservableObject {
     }
     
     // 清除所有照片
-    func clearAllPhotos() {
+    func clearAllPhotos() async {
         do {
             try modelContext.delete(model: FirstLook.self)
+            try modelContext.delete(model: Topic.self)
             try modelContext.save()
-            photos.removeAll()
-            print("所有照片已清除")
+            print("所有数据已清除")
+            await fetchRandomPhotoFromAPI(count: 20)
         } catch {
             print("清除照片时出错: \(error)")
         }
@@ -185,7 +195,7 @@ class ViewModel: ObservableObject {
             
             for topic in newTopics {
                 let newTopic = Topic(id: topic.id, slug: topic.slug, description: topic.topicDescription, isFavorite: topic.isFavorite)  // 对于每一个新主题，创建一个新的 Topic 对象并插入到 modelContext 中
-                modelContext.insert(newTopic) // 插入到数据库中
+                modelContext.insert(newTopic) // 插入到数据库
                 topics.append(newTopic)       // 同时将新主添加到 topics 数组中，确保 UI 立即更新。
                 print("ViewModel: 插入新主题: \(topic.id)")
             }
@@ -199,50 +209,51 @@ class ViewModel: ObservableObject {
     }
     
     // 获取主题下的图片
-    func fetchTopicPhotos(topic: Topic, page: Int, perPage:Int = 10) async {
+    func fetchTopicPhotos(topic: Topic, page: Int, perPage: Int = 10) async {
+        print("ViewModel: 开始获取主题 \(topic.id) 下的图片")
+        
+        // 首先检查本地数据库
+        var localPhotoDescriptor = FetchDescriptor<TopicPhoto>(
+            predicate: #Predicate<TopicPhoto> { photo in
+                photo.id.contains(topic.id)
+            }
+        )
+        localPhotoDescriptor.sortBy = [SortDescriptor(\TopicPhoto.id)]
+        localPhotoDescriptor.fetchLimit = page * perPage
+        
         do {
-            print("ViewModel: 开始获取主题 \(topic.id) 下的图片")
+            let localPhotos = try modelContext.fetch(localPhotoDescriptor)
+            
+            if localPhotos.count >= page * perPage {
+                // 如果本地数据足够，直接使用本地数据
+                print("ViewModel: 使用本地缓存的 \(localPhotos.count) 张主题照片")
+                await MainActor.run {
+                    self.topicPhotos[topic.id] = localPhotos
+                }
+                return
+            }
+            
+            // 如果本地数据不足，从 API 获取新数据
             let fetchedPhotos = try await api.fetchTopicPhotos(topicIdOrSlug: topic.id, page: page, perPage: perPage)
             
             var newTopicPhotos: [TopicPhoto] = []
             for photo in fetchedPhotos {
-                // 尝试从数据库中获取已存在的 TopicPhoto
-                let existingPhotoDescriptor = FetchDescriptor<TopicPhoto>(predicate: #Predicate { $0.id == photo.id })
+                let photoId = "\(topic.id)_\(photo.id)"  // 使用组合 ID
+                let existingPhotoDescriptor = FetchDescriptor<TopicPhoto>(predicate: #Predicate { $0.id == photoId })
                 let existingPhotos = try modelContext.fetch(existingPhotoDescriptor)
                 
                 let topicPhoto: TopicPhoto
                 if let existingPhoto = existingPhotos.first {
-                    // 如果照片已存在，更新其属性
+                    // 更新现有照片
                     topicPhoto = existingPhoto
-                    topicPhoto.user = PhotoModel.User(
-                        id: photo.user.id,
-                        name: photo.user.name,
-                        username: photo.user.username
-                    )
-                    topicPhoto.urls = PhotoModel.Urls(
-                        raw: photo.urls.raw,
-                        full: photo.urls.full,
-                        regular: photo.urls.regular,
-                        small: photo.urls.small,
-                        thumb: photo.urls.thumb
-                    )
-                    // 保留现有的 isFavorite 状态
+                    topicPhoto.user = PhotoModel.User(id: photo.user.id, name: photo.user.name, username: photo.user.username)
+                    topicPhoto.urls = PhotoModel.Urls(raw: photo.urls.raw, full: photo.urls.full, regular: photo.urls.regular, small: photo.urls.small, thumb: photo.urls.thumb)
                 } else {
-                    // 如果照片不存在，创建新的 TopicPhoto
+                    // 创建新照片
                     topicPhoto = TopicPhoto(
-                        id: photo.id,
-                        user: PhotoModel.User(
-                            id: photo.user.id,
-                            name: photo.user.name,
-                            username: photo.user.username
-                        ),
-                        urls: PhotoModel.Urls(
-                            raw: photo.urls.raw,
-                            full: photo.urls.full,
-                            regular: photo.urls.regular,
-                            small: photo.urls.small,
-                            thumb: photo.urls.thumb
-                        ),
+                        id: photoId,
+                        user: PhotoModel.User(id: photo.user.id, name: photo.user.name, username: photo.user.username),
+                        urls: PhotoModel.Urls(raw: photo.urls.raw, full: photo.urls.full, regular: photo.urls.regular, small: photo.urls.small, thumb: photo.urls.thumb),
                         isFavorite: false
                     )
                     modelContext.insert(topicPhoto)
@@ -255,7 +266,7 @@ class ViewModel: ObservableObject {
             }
             
             try modelContext.save()
-            print("ViewModel: 保存 \(fetchedPhotos.count) 张主题照片到内存和 SwiftData")
+            print("ViewModel: 保存 \(newTopicPhotos.count) 张主题照片到内存和 SwiftData")
         } catch {
             errorMessage = "从 API 获取或保存主题照片失败: \(error.localizedDescription)"
             print("ViewModel 错误: \(errorMessage ?? "")")
@@ -294,5 +305,5 @@ class ViewModel: ObservableObject {
             print("加载收藏图片时出错: \(error)")
         }
     }
-
+    
 }

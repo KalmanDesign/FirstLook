@@ -12,6 +12,7 @@ import WaterfallGrid
 
 struct ListView: View {
     @EnvironmentObject private var vm: ViewModel
+    @State private var isGridView = false
     
     
     var body: some View {
@@ -22,24 +23,29 @@ struct ListView: View {
                         KFImage(URL(string: photo.urls.thumb))
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            // .frame(height: 240)
                             .clipped()
                             .cornerRadius(8)
-                        // .overlay(alignment: .topTrailing) {
-                        //     Button {
-                        //         vm.toggleFavorite(photo)
-                        //     } label: {
-                        //         Image(systemName: photo.isFavorite ?? false ? "heart.fill" : "heart")
-                        //             .foregroundColor(photo.isFavorite ?? false ? .red : .white)
-                        //             .padding(8)
-                        //             .background(Color.black.opacity(0.5))
-                        //             .clipShape(Circle())
-                        //     }
-                        //     .padding(8)
-                        // }
+                    }
+                    
+                }
+                .gridStyle(columns: isGridView ? 1 : 2, spacing: 8)
+                .padding(.horizontal, 8)
+                Button{
+                    Task{
+                        await vm.clearAllPhotos()
+                    }
+                }label: {
+                    Text("清除所有图片")
+                }
+            }
+            .toolbar{
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        isGridView.toggle()
+                    }) {
+                        Image(systemName: isGridView ? "square.fill" : "rectangle.grid.1x2.fill")
                     }
                 }
-                .padding(.horizontal, 8)
             }
             .padding(.top,12)
             .navigationTitle("Wallpaper")

@@ -58,11 +58,13 @@ struct PhotoUser: Codable {
     var id: String
     var name: String
     var portfolioUrl: String?
+    var bio:String?
     
     enum CodingKeys: String, CodingKey {
         case id
         case name
         case portfolioUrl = "portfolio_url"
+        case bio
     }
 }
 extension FirstLook: Photo {}
@@ -116,6 +118,7 @@ final class TopicPhoto: Identifiable, Codable {
     var urls: PhotoModel.Urls
     @Attribute var isFavorite: Bool? // 添加 @Attribute 标记
 
+
     enum CodingKeys: String, CodingKey {
         case id
         case user
@@ -158,10 +161,13 @@ struct TopicPhotoUrls: Codable {
 struct TopicPhotoUser: Codable {
     var id: String
     var portfolioUrl: String?
+    var bio: String?
 
     enum CodingKeys: String, CodingKey {
         case id
+        case bio
         case portfolioUrl = "portfolio_url"
+
     }
 }
 

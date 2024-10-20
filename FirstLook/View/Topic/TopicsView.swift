@@ -73,25 +73,12 @@ struct TopicPhotoView: View {
     let photo: TopicPhoto
     
     var body: some View {
-        KFImage(URL(string: photo.urls.regular))
+        KFImage(URL(string: photo.urls.thumb))
             .resizable()
             .aspectRatio(contentMode: .fill)
             .frame(width: 140,height: 200)
             .clipped()
             .cornerRadius(10)
-        //            .overlay(alignment: .topTrailing) {
-        //                Button {
-        //                    print("收藏按钮被点击，照片 ID: \(photo.id)")
-        //                    vm.toggleFavorite(photo)
-        //                } label: {
-        //                    Image(systemName: photo.isFavorite ?? false ? "heart.fill" : "heart")
-        //                        .foregroundColor(photo.isFavorite ?? false ? .red : .white)
-        //                        .padding(8)
-        //                        .background(Color.black.opacity(0.5))
-        //                        .clipShape(Circle())
-        //                }
-        //                .padding(8)
-        //            }
     }
 }
 

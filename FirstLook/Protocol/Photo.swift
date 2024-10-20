@@ -31,10 +31,17 @@ enum PhotoModel {
         var small: String
         var thumb: String
     }
-
+    
     struct User: Codable {
         var id: String
         var name: String
         var username: String
+        var bio: String?
+        var portfolioUrl: String?
+        
+        enum CodingKeys: String, CodingKey {
+            case id, name, username, bio
+            case portfolioUrl = "portfolio_url"
+        }
     }
 }

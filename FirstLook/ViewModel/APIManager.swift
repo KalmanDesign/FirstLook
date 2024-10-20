@@ -12,6 +12,8 @@ class APIManager{
     private let accessKey = "fe-n7OGmhF3_4V2QD4o5oCprtUkv3OsgKHq_0K6VLE4"
     private let topicURL = "https://api.unsplash.com"
     
+
+    //  获取随机图片
     func fetchRandomPhotos(count: Int) async throws -> [FirstLook] {
         var components = URLComponents(string: "\(baseURL)/photos/random")!
         components.queryItems = [
@@ -35,12 +37,21 @@ class APIManager{
             if !(200...299).contains(httpResponse.statusCode) {
                 throw APIError.networkError
             }
+
             
+
+            
+
+
+
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             
             let photos = try decoder.decode([FirstLook].self, from: data)
             print("成功获取 \(photos.count) 张照片")
+            for photo in photos {
+                print("照片 ID: \(photo.id), 用户名: \(photo.user.username), 用户简介: \(String(describing: photo.user.bio))")
+                 }
             return photos
         } catch let decodingError as DecodingError {
             print("解码错误: \(decodingError)")
@@ -98,7 +109,10 @@ class APIManager{
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             decoder.dateDecodingStrategy = .iso8601
             let photos = try decoder.decode([TopicPhoto].self, from: data)
-            
+            for photo in photos {
+                print("主题照片 ID: \(photo.id), 主题照片用户名: \(photo.user.username), 主题图片简介:\(String(describing: photo.user.bio))")
+            }
+
             return photos
         } catch {
             print("获取主题照片时出错: \(error)")

@@ -27,18 +27,25 @@ struct DetailView: View {
                     }
                     .padding()
                     .foregroundColor(.white)
-//                    .background(Color.black.opacity(0.6))
                     .cornerRadius(10)
                     .padding(.bottom, 20)
                     .padding(.horizontal, 20)
                 }
         }
-        .sheet(isPresented: $showInfoSheet, content: {
-            Text("text")
-            Text(photo.user.username)
-
-        })
         .edgesIgnoringSafeArea(.all)
+        .sheet(isPresented: $showInfoSheet) {
+            VStack(alignment: .center,spacing: 12){
+                Text(photo.user.username.capitalized)
+                    .font(.title2)
+                    .bold()
+                Text(photo.user.bio ?? "The absence of a bio makes it hard to know the subject but could imply mystery and offer a chance for discovery.")
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                Spacer()
+            }
+            .padding(16)
+            .presentationDetents([.height(160), .height(200)])
+        }
     }
 }
 
@@ -67,7 +74,7 @@ struct ButtonGroup: View {
                 .background(Color.black.opacity(0.5))
                 .clipShape(Circle())
         }
-
+        
     }
 }
 
