@@ -19,13 +19,13 @@ struct ContentView: View {
            TabView(selection: $selectedTab) {
                ListView()
                    .tabItem {
-                       Label("Home", systemImage: "house")
+                       Label("Home", systemImage: "square.filled.on.square")
                    }
                    .tag(0)
                
                TopicsView()
                    .tabItem {
-                       Label("Topics", systemImage: "list.bullet")
+                       Label("Topics", systemImage: "heart.text.square.fill")
                    }
                    .tag(1)
                
@@ -42,6 +42,8 @@ struct ContentView: View {
                    vm.loadFavoritePhotos()
                }
            }
+             .preferredColorScheme(.dark)  // 设置深色模式
+            .background(Color.black)  // 设置背景颜色为黑色
        }
 }
 

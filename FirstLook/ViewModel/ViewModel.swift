@@ -47,7 +47,7 @@ class ViewModel: ObservableObject {
         errorMessage = nil
         await fetchPhotosFromLocal() // 从本地获取照片
         if photos.isEmpty {
-            await fetchRandomPhotoFromAPI(count: 4)
+            await fetchRandomPhotoFromAPI(count: 30) // 从 API 获取 30 张随机照片
         }
         isLoading = false
     }
@@ -180,7 +180,7 @@ class ViewModel: ObservableObject {
     func fetchTopics() async {
         do {
             print("ViewModel: 开始获取主题")
-            let newTopics = try await api.fetchTopics(perPage: 2)
+            let newTopics = try await api.fetchTopics(perPage: 6)
             // print("ViewModel: API 返回的原始数据: \(newTopics)")
             
             for topic in newTopics {
@@ -199,10 +199,10 @@ class ViewModel: ObservableObject {
     }
     
     // 获取主题下的图片
-    func fetchTopicPhotos(topic: Topic) async {
+    func fetchTopicPhotos(topic: Topic, page: Int, perPage:Int = 10) async {
         do {
             print("ViewModel: 开始获取主题 \(topic.id) 下的图片")
-            let fetchedPhotos = try await api.fetchTopicPhotos(topicIdOrSlug: topic.id, page: 1, perPage: 10)
+            let fetchedPhotos = try await api.fetchTopicPhotos(topicIdOrSlug: topic.id, page: page, perPage: perPage)
             
             var newTopicPhotos: [TopicPhoto] = []
             for photo in fetchedPhotos {

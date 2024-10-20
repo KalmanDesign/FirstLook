@@ -23,8 +23,8 @@ struct FavoritesView: View {
                         NavigationLink(destination: DetailView(photo: photo).toolbar(.hidden, for: .tabBar)) {
                             KFImage(URL(string: photo.urls.small))
                                 .resizable()
-                                .frame(height: 240)
-                                .scaledToFit()
+                                .aspectRatio(contentMode: .fit)
+                                .clipped()
                                 .cornerRadius(8)
                         }
                     }
@@ -32,21 +32,23 @@ struct FavoritesView: View {
                     .padding(.horizontal, 8)
                 }
             }
-            .navigationTitle("收藏")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        vm.unfavoriteAllPhotos()
-                    }) {
-                        Text("清空收藏")
-                    }
-                }
-            }
+            .padding(.top,12)
+            .navigationTitle("Favorite")
+//            .toolbar {
+//                ToolbarItem(placement: .navigationBarTrailing) {
+//                    Button(action: {
+//                        vm.unfavoriteAllPhotos()
+//                    }) {
+//                        Text("清空收藏")
+//                    }
+//                }
+//            }
             .onAppear {
                 print("FavoritesView onAppear")
                 vm.loadFavoritePhotos()
             }
         }
+        
     }
     
     private var emptyStateView: some View {
