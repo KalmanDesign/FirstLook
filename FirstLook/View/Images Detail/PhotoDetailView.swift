@@ -15,14 +15,10 @@ struct ImageDetailView: View {
     @State private var overlayState: Int = 0
     @State private var isImageLoadingFailed = false
     @State private var showToast = false
-    
-    
-    
-    
+    @State private var isSharing = false
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                
                 KFImage(URL(string: photo.urls.full))
                     .placeholder { // 在图片加载时显示
                         ProgressView()
@@ -32,15 +28,14 @@ struct ImageDetailView: View {
                     }
                     .fade(duration: 0.25) // 添加淡入效果
                     .onFailure() { error in
-                           // 这里可以设置一个 @State 变量来显示错误信息
-                           print("Image loading failed: \(error.localizedDescription)")
-                       }
+                        // 这里可以设置一个 @State 变量来显示错误信息
+                        print("Image loading failed: \(error.localizedDescription)")
+                    }
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: geo.size.width, height: geo.size.height)
                     .blur(radius: overlayState == 1 ? 10 : 0)
                     .scaleEffect(overlayState == 1 ? 1.2 : 1, anchor: .center)
-                    
                 
                 Group {
                     if overlayState == 1 {
@@ -57,7 +52,7 @@ struct ImageDetailView: View {
         }
         .overlay(alignment: .bottomLeading) {
             HStack(alignment: .bottom) {
-                ButtonGroup(showInfoSheet: $showInfoSheet, overlayState: $overlayState, showToast: $showToast, photo: photo)
+                ButtonGroup(showInfoSheet: $showInfoSheet, overlayState: $overlayState, showToast: $showToast, photo: photo, isSharing: $isSharing)
             }
             .padding()
             .foregroundColor(.white)
@@ -90,13 +85,12 @@ struct ImageDetailView: View {
     }
 }
 
-
 struct ToastView: View {
     @EnvironmentObject private var vm: ViewModel
     let photo: any Photo // 添加了photo参数
     var body: some View {
         HStack {
-             Image(systemName: photo.isFavorite ?? false ? "heart.fill" : "heart")
+            Image(systemName: photo.isFavorite ?? false ? "heart.fill" : "heart")
                 .foregroundColor(photo.isFavorite ?? false ? .red : .white)
             Text(photo.isFavorite ?? false ? "Favorite successfully" : "Cancel Favorite") // 显示文字
                 .foregroundColor(.white) // 设置文字颜色为白色
@@ -104,10 +98,9 @@ struct ToastView: View {
         .padding() // 设置内边距
         .background(Color.black.opacity(0.5)) // 设置背景颜色为半透明黑色
         .cornerRadius(12)
-            .zIndex(100)
+        .zIndex(100)
     }
 }
-
 
 struct ButtonGroup: View {
     @EnvironmentObject private var vm: ViewModel
@@ -116,7 +109,7 @@ struct ButtonGroup: View {
     @Binding var overlayState: Int
     @Binding var showToast: Bool
     let photo: any Photo // 添加了photo参数
-    
+    @Binding  var isSharing: Bool
     
     var body: some View {
         HStack{
@@ -135,12 +128,66 @@ struct ButtonGroup: View {
             
             Spacer()
             
+            // 分享按钮 - 分享网址
+            // ShareLink(item: photo.urls.full) {
+            //     Image(systemName: "square.and.arrow.up")
+            //         .resizable()  // 使图标可调整大小
+            //         .aspectRatio(contentMode: .fit)  // 保持宽高比
+            //         .frame(width: 14, height: 14)  // 设置固定大小为14
+            //         .foregroundColor(.white)
+            //         .padding(12)
+            //         .background(Color.black.opacity(0.5))
+            //         .clipShape(Circle())
+            // }
+
+            // 分享按钮 - 分享图片
+            Button(action: {
+                isSharing = true
+                vm.shareImage(from: photo.urls.full)
+                isSharing = false
+            }) {
+                Image(systemName: "square.and.arrow.up")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 14, height: 14)
+                    .foregroundColor(.white)
+                    .padding(12)
+                    .background(Color.black.opacity(0.5))
+                    .clipShape(Circle())
+            }
+            .disabled(isSharing)
+
+
+
+            
+            // 下载按钮
+            Button{
+                vm.downloadAndSaveImage(from: photo.urls.full) { result in
+                    switch result{
+                    case .success:
+                        print("图片已成功保存到相册")
+                    case .failure(let error):
+                        print("保存图片失败：\(error.localizedDescription)")
+                        
+                    }
+                }
+            }label: {
+                Image(systemName: "arrow.down")
+                    .resizable()  // 使图标可调整大小
+                    .aspectRatio(contentMode: .fit)  // 保持宽高比
+                    .frame(width: 14, height: 14)  // 设置固定大小为14
+                    .foregroundColor(.white)
+                    .padding(12)
+                    .background(Color.black.opacity(0.5))
+                    .clipShape(Circle())
+            }
+            
             // 收藏按钮
             Button {
                 let impact = UIImpactFeedbackGenerator(style: .rigid)
                 impact.impactOccurred()
                 vm.toggleFavorite(photo)
-                 showToast = true
+                showToast = true
                 DispatchQueue.main.asyncAfter(deadline: .now()+1.4){
                     withAnimation {
                         showToast = false
@@ -203,7 +250,14 @@ struct ButtonGroup: View {
             return "square.grid.2x2"
         }
     }
+
 }
+
+
+
+
+
+
 
 
 

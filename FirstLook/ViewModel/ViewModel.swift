@@ -19,6 +19,9 @@
 
 import Foundation
 import SwiftData
+import Photos
+import UIKit
+
 
 @MainActor
 class ViewModel: ObservableObject {
@@ -31,13 +34,48 @@ class ViewModel: ObservableObject {
     @Published var topicPhotos: [String: [TopicPhoto]] = [:] // 主题下的照片
     @Published var isLoading = false
     @Published var errorMessage: String?
+    private var imageCache: [String: URL] = [:] // 图片缓存
+    private let cachesDirectory: URL // 缓存目录
+    private let cacheFile: URL // 缓存文件
+
     
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
+        self.cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        self.cacheFile = cachesDirectory.appendingPathComponent("imageCache.plist")
+        
+        loadImageCache()
+        
         Task {
             await loadPhotos()  // 在初始化时立即调用 loadPhotos()，确保 ViewModel 创建后就开始加载照片
             await loadTopicsIfNeeded() // 加载主题内容，只有在主题列表为空时才调用
             loadFavoritePhotos()
+        }
+    }
+    
+    // 保存数据到本地
+    private func loadImageCache() {
+        do {
+            let data = try Data(contentsOf: cacheFile)
+            let decoder = PropertyListDecoder()
+            let cachedURLs = try decoder.decode([String: String].self, from: data)
+            imageCache = cachedURLs.mapValues { URL(fileURLWithPath: $0) }
+        } catch {
+            print("Failed to load image cache: \(error)")
+            // 如果加载失败，就使用空的缓存
+            imageCache = [:]
+        }
+    }
+
+    // 保存数据到本地
+    private func saveImageCache() {
+        do {
+            let encoder = PropertyListEncoder()
+            let cachedURLs = imageCache.mapValues { $0.path }
+            let data = try encoder.encode(cachedURLs)
+            try data.write(to: cacheFile)
+        } catch {
+            print("Failed to save image cache: \(error)")
         }
     }
     
@@ -306,4 +344,136 @@ class ViewModel: ObservableObject {
         }
     }
     
+    
+    // 下载并保存原始图片
+    func downloadAndSaveImage(from urlString: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let url = URL(string: urlString) else {
+            completion(.failure(NSError(domain: "无效的 URL", code: 0, userInfo: nil)))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = data, let image = UIImage(data: data) else {
+                completion(.failure(NSError(domain: "无法创建图像", code: 0, userInfo: nil)))
+                return
+            }
+            
+            PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            } completionHandler: { success, error in
+                if success {
+                    completion(.success(()))
+                } else if let error = error {
+                    completion(.failure(error))
+                } else {
+                    completion(.failure(NSError(domain: "未知错误", code: 0, userInfo: nil)))
+                }
+            }
+        }.resume()
+    }
+    
+    // 下载、裁剪并保存适应屏幕的图片
+     func downloadAndSaveDisplayImage(from urlString: String, completion: @escaping (Bool) -> Void) {
+        guard let url = URL(string: urlString) else {
+            completion(false)
+            return
+        }
+        
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            DispatchQueue.main.async {
+                if let data = data, let image = UIImage(data: data) {
+                    let screenSize = UIScreen.main.bounds.size
+                    let imageSize = image.size
+                    let scale = max(screenSize.width / imageSize.width, screenSize.height / imageSize.height)
+                    
+                    let scaledWidth = imageSize.width * scale
+                    let scaledHeight = imageSize.height * scale
+                    let xOffset = (scaledWidth - screenSize.width) / 2
+                    let yOffset = (scaledHeight - screenSize.height) / 2
+                    
+                    UIGraphicsBeginImageContextWithOptions(screenSize, false, 0)
+                    image.draw(in: CGRect(x: -xOffset, y: -yOffset, width: scaledWidth, height: scaledHeight))
+                    let croppedImage = UIGraphicsGetImageFromCurrentImageContext() ?? image
+                    UIGraphicsEndImageContext()
+                    
+                    PHPhotoLibrary.requestAuthorization { status in
+                        switch status {
+                        case .authorized, .limited:
+                            PHPhotoLibrary.shared().performChanges({
+                                PHAssetChangeRequest.creationRequestForAsset(from: croppedImage)
+                            }) { success, error in
+                                DispatchQueue.main.async {
+                                    completion(success)
+                                }
+                            }
+                        case .denied, .restricted, .notDetermined:
+                            DispatchQueue.main.async {
+                                completion(false)
+                            }
+                        @unknown default:
+                            DispatchQueue.main.async {
+                                completion(false)
+                            }
+                        }
+                    }
+                } else {
+                    completion(false)
+                }
+            }
+        }.resume()
+    }
+    
+   // 下载图片并分享
+    func downloadImageForSharing(from urlString: String) async throws -> URL {
+        if let cachedURL = imageCache[urlString], FileManager.default.fileExists(atPath: cachedURL.path) {
+            return cachedURL
+        }
+
+        guard let url = URL(string: urlString) else {
+            throw NSError(domain: "无效的 URL", code: 0, userInfo: nil)
+        }
+
+        let (data, _) = try await URLSession.shared.data(from: url)
+        guard let image = UIImage(data: data) else {
+            throw NSError(domain: "无法创建图像", code: 0, userInfo: nil)
+        }
+
+        let fileURL = cachesDirectory.appendingPathComponent("wallpaper_\(UUID().uuidString).jpg")
+
+        if let jpegData = image.jpegData(compressionQuality: 0.8) {
+            try jpegData.write(to: fileURL)
+            imageCache[urlString] = fileURL
+            saveImageCache()
+            return fileURL
+        } else {
+            throw NSError(domain: "无法创建JPEG数据", code: 0, userInfo: nil)
+        }
+    }
+
+    // 下载并分享图片
+    func shareImage(from urlString: String) {
+        Task {
+            do {
+                let fileURL = try await downloadImageForSharing(from: urlString)
+                
+                await MainActor.run {
+                    let activityVC = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                       let window = windowScene.windows.first,
+                       let rootViewController = window.rootViewController {
+                        rootViewController.present(activityVC, animated: true, completion: nil)
+                    }
+                }
+            } catch {
+                print("图片下载或分享失败：\(error.localizedDescription)")
+            }
+        }
+    }
+    
 }
+

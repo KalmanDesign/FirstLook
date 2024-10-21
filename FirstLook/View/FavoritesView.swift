@@ -12,7 +12,7 @@ import WaterfallGrid
 
 struct FavoritesView: View {
     @EnvironmentObject private var vm: ViewModel
-    
+    @State private var sortByDate = false
     
     
     var body: some View {

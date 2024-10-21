@@ -30,13 +30,6 @@ struct ListView: View {
                 }
                 .gridStyle(columns: isGridView ? 1 : 2, spacing: 8)
                 .padding(.horizontal, 8)
-                Button{
-                    Task{
-                        await vm.clearAllPhotos()
-                    }
-                }label: {
-                    Text("清除所有图片")
-                }
             }
             .toolbar{
                 ToolbarItem(placement: .navigationBarTrailing) {
