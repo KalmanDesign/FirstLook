@@ -19,6 +19,7 @@ struct ImageDetailView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
+                
                 KFImage(URL(string: photo.urls.full))
                     .placeholder { // 在图片加载时显示
                         ProgressView()
@@ -47,19 +48,26 @@ struct ImageDetailView: View {
                         LockScreenView()
                     }
                 }
-                
+                if vm.isSharing {
+                    ZStack {
+                        Color.black.opacity(0.72)
+                            .edgesIgnoringSafeArea(.all)
+                        VStack {
+                            ProgressView()
+                            Text("Downloading image, please wait...")
+                                .foregroundColor(.white)
+                        }
+                    }
+                }
+               
             }
         }
         .overlay(alignment: .bottomLeading) {
-            HStack(alignment: .bottom) {
-                ButtonGroup(showInfoSheet: $showInfoSheet, overlayState: $overlayState, showToast: $showToast, photo: photo, isSharing: $isSharing)
-            }
-            .padding()
-            .foregroundColor(.white)
-            .cornerRadius(10)
-            .padding(.bottom, 16)
-            .padding(.horizontal, 12)
-            .zIndex(100)
+            ButtonGroup(showInfoSheet: $showInfoSheet, overlayState: $overlayState, showToast: $showToast, photo: photo, isSharing: $isSharing)
+                .padding(.horizontal,16)
+                .padding(.bottom,40)
+                .opacity(vm.isSharing ? 0.5 : 1)
+                .disabled(vm.isSharing)
         }
         .overlay(alignment: .top){
             if showToast{
@@ -128,37 +136,25 @@ struct ButtonGroup: View {
             
             Spacer()
             
-            // 分享按钮 - 分享网址
-            // ShareLink(item: photo.urls.full) {
-            //     Image(systemName: "square.and.arrow.up")
-            //         .resizable()  // 使图标可调整大小
-            //         .aspectRatio(contentMode: .fit)  // 保持宽高比
-            //         .frame(width: 14, height: 14)  // 设置固定大小为14
-            //         .foregroundColor(.white)
-            //         .padding(12)
-            //         .background(Color.black.opacity(0.5))
-            //         .clipShape(Circle())
-            // }
-
             // 分享按钮 - 分享图片
             Button(action: {
-                isSharing = true
-                vm.shareImage(from: photo.urls.full)
-                isSharing = false
+                Task {
+                    await vm.shareImage(from: photo.urls.full)
+                }
             }) {
                 Image(systemName: "square.and.arrow.up")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 14, height: 14)
+                    .frame(width: 17, height: 17)
                     .foregroundColor(.white)
                     .padding(12)
                     .background(Color.black.opacity(0.5))
                     .clipShape(Circle())
             }
-            .disabled(isSharing)
-
-
-
+            .disabled(vm.isSharing)
+            
+            
+            
             
             // 下载按钮
             Button{
@@ -250,7 +246,7 @@ struct ButtonGroup: View {
             return "square.grid.2x2"
         }
     }
-
+    
 }
 
 

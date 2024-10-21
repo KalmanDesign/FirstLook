@@ -27,6 +27,9 @@ import UIKit
 class ViewModel: ObservableObject {
     private let api = APIManager()
     private let modelContext: ModelContext
+    private var imageCache: [String: URL] = [:] // 图片缓存
+    private let cachesDirectory: URL // 缓存目录
+    private let cacheFile: URL // 缓存文件
     
     @Published var photos: [FirstLook] = []
     @Published var favoritePhotos: [any Photo] = []  // 收照片
@@ -34,9 +37,8 @@ class ViewModel: ObservableObject {
     @Published var topicPhotos: [String: [TopicPhoto]] = [:] // 主题下的照片
     @Published var isLoading = false
     @Published var errorMessage: String?
-    private var imageCache: [String: URL] = [:] // 图片缓存
-    private let cachesDirectory: URL // 缓存目录
-    private let cacheFile: URL // 缓存文件
+    @Published var isSharing = false // 是否正在分享
+    
 
     
     init(modelContext: ModelContext) {
@@ -456,22 +458,26 @@ class ViewModel: ObservableObject {
     }
 
     // 下载并分享图片
-    func shareImage(from urlString: String) {
-        Task {
-            do {
-                let fileURL = try await downloadImageForSharing(from: urlString)
-                
+    func shareImage(from urlString: String) async {
+        isSharing = true
+        do {
+            let fileURL = try await downloadImageForSharing(from: urlString)
+            
+            let activityVC = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let window = windowScene.windows.first,
+               let rootViewController = window.rootViewController {
                 await MainActor.run {
-                    let activityVC = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
-                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                       let window = windowScene.windows.first,
-                       let rootViewController = window.rootViewController {
-                        rootViewController.present(activityVC, animated: true, completion: nil)
+                    rootViewController.present(activityVC, animated: true) {
+                        self.isSharing = false
                     }
                 }
-            } catch {
-                print("图片下载或分享失败：\(error.localizedDescription)")
+            } else {
+                isSharing = false
             }
+        } catch {
+            print("图片下载或分享失败：\(error.localizedDescription)")
+            isSharing = false
         }
     }
     
