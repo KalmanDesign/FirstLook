@@ -12,8 +12,7 @@ import WaterfallGrid
 
 struct FavoritesView: View {
     @EnvironmentObject private var vm: ViewModel
-    @State private var sortByDate = false
-    
+    @State private var refreshID = UUID()
     
     var body: some View {
         NavigationStack {
@@ -21,27 +20,39 @@ struct FavoritesView: View {
                 if vm.favoritePhotos.isEmpty {
                     emptyStateView
                 } else {
-                    WaterfallGrid(vm.favoritePhotos, id: \.id) { photo in
-                        NavigationLink(destination: ImageDetailView(photo: photo).toolbar(.hidden, for: .tabBar).navigationBarBackButtonHidden(true)) {
-                            KFImage(URL(string: photo.urls.small))
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .clipped()
-                                .cornerRadius(8)
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                        ForEach(vm.favoritePhotos, id: \.id) { photo in
+                            NavigationLink(destination: ImageDetailView(photo: photo).toolbar(.hidden, for: .tabBar).navigationBarBackButtonHidden(true)) {
+                                GeometryReader { geometry in
+                                    KFImage(URL(string: photo.urls.small))
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill) // 以中心裁剪
+                                        .frame(width: geometry.size.width, height: geometry.size.width * (4/3)) // 16:9 比例
+                                        .clipped() // 裁剪超出部分
+                                        .cornerRadius(10)
+                                }
+                                .aspectRatio(3/4, contentMode: .fit) // 设置为 16:9 比例
+                            }
                         }
                     }
-                    .gridStyle(columns: 2, spacing: 8, animation: .easeInOut)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, 10)
                 }
             }
-            .padding(.top,12)
-            .navigationTitle("Favorite")
+            .id(refreshID)
+            .navigationTitle("Collect")
             .onAppear {
                 print("FavoritesView onAppear")
+                print("Current favoritePhotos count: \(vm.favoritePhotos.count)")
                 vm.loadFavoritePhotos()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.refreshID = UUID()
+                }
             }
+            // .onChange(of: vm.favoritePhotos.map { $0.id }) { newValue in
+            //     print("favoritePhotos changed in FavoritesView, new count: \(newValue.count)")
+            //     self.refreshID = UUID()
+            // }
         }
-        
     }
     
     private var emptyStateView: some View {

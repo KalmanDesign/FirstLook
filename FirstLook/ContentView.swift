@@ -44,6 +44,7 @@ struct ContentView: View {
         }
         .preferredColorScheme(.dark)  // 设置深色模式
         .background(Color.black)  // 设置背景颜色为黑色
+        
     }
 }
 

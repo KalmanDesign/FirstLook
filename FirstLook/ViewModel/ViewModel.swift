@@ -5,7 +5,6 @@
 //  Created by Kalman on 2024/10/17.
 //
 
-
 /*
  实现思路的关键点：
  本地优先：总是先尝试从本地加载照片，只有在本地没有照片时才从 API 获取。
@@ -21,7 +20,7 @@ import Foundation
 import SwiftData
 import Photos
 import UIKit
-
+import Combine
 
 @MainActor
 class ViewModel: ObservableObject {
@@ -30,6 +29,9 @@ class ViewModel: ObservableObject {
     private var imageCache: [String: URL] = [:] // 图片缓存
     private let cachesDirectory: URL // 缓存目录
     private let cacheFile: URL // 缓存文件
+    private var cancellables = Set<AnyCancellable>()
+    private let retryDelay: TimeInterval = 3.0
+    private let maxRetries = 3
     
     @Published var photos: [FirstLook] = []
     @Published var favoritePhotos: [any Photo] = []  // 收照片
@@ -39,8 +41,6 @@ class ViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var isSharing = false // 是否正在分享
     
-
-    
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
         self.cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -48,11 +48,18 @@ class ViewModel: ObservableObject {
         
         loadImageCache()
         
-        Task {
-            await loadPhotos()  // 在初始化时立即调用 loadPhotos()，确保 ViewModel 创建后就开始加载照片
-            await loadTopicsIfNeeded() // 加载主题内容，只有在主题列表为空时才调用
-            loadFavoritePhotos()
+        // 延迟加载数据
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            Task {
+                await self.loadInitialData()
+            }
         }
+    }
+    
+    private func loadInitialData() async {
+        await loadPhotosWithRetry()
+        await loadTopicsWithRetry()
+        loadFavoritePhotos()
     }
     
     // 保存数据到本地
@@ -64,11 +71,10 @@ class ViewModel: ObservableObject {
             imageCache = cachedURLs.mapValues { URL(fileURLWithPath: $0) }
         } catch {
             print("Failed to load image cache: \(error)")
-            // 如果加载失败，就使用空的缓存
-            imageCache = [:]
+            imageCache = [:] // 如果加载失败，就使用空的缓存
         }
     }
-
+    
     // 保存数据到本地
     private func saveImageCache() {
         do {
@@ -82,23 +88,37 @@ class ViewModel: ObservableObject {
     }
     
     // 加载照片
-    func loadPhotos() async {
+    func loadPhotosWithRetry(retries: Int = 0) async {
         isLoading = true
         errorMessage = nil
-        await fetchPhotosFromLocal() // 从本地获取照片
-        if photos.isEmpty {
-            await fetchRandomPhotoFromAPI(count: 30) // 从 API 获取 30 张随机照片
+        
+        do {
+            await fetchPhotosFromLocal()
+            if photos.isEmpty {
+                try await fetchRandomPhotoFromAPI(count: 30)
+            }
+        } catch {
+            if retries < maxRetries {
+                print("获取照片失败，\(retryDelay)秒后重试。重试次数: \(retries + 1)")
+                try? await Task.sleep(nanoseconds: UInt64(retryDelay * 1_000_000_000))
+                await loadPhotosWithRetry(retries: retries + 1)
+            } else {
+                print("获取照片失败，已达到最大重试次数")
+                await MainActor.run {
+                    self.errorMessage = "无法加载照片，请检查网络连接并重试"
+                }
+                loadCachedPhotos() // 尝试从缓存加载照片
+            }
         }
+        
         isLoading = false
-        
-        
     }
     
     // 从本地数据库获取所有照片
     func fetchPhotosFromLocal() async {
         let descriptor = FetchDescriptor<FirstLook>(sortBy: [SortDescriptor(\.id)])
         do {
-            photos = try modelContext.fetch(descriptor) // 从本地数据库获取所有 FreshLook 对象,同时将新照片添加到 photos 数组中，确保 UI 立即更新
+            photos = try modelContext.fetch(descriptor) // 从本地数据库获取所有 FreshLook 对象
             print("本地获取到 \(photos.count) 张照片")
             for photo in photos {
                 print("本地照片 ID: \(photo.id)")
@@ -110,31 +130,24 @@ class ViewModel: ObservableObject {
     }
     
     // 从 API 获取指定数量的随机照片
-    func fetchRandomPhotoFromAPI(count: Int) async {
-        do {
-            let newPhotos = try await api.fetchRandomPhotos(count: count) // 调用 API 获取指定数量的随机照片。
-            print("ViewModel: API 返回的照片数量: \(newPhotos.count)")
-            
-            for photo in newPhotos {
-                let newFreshLook = FirstLook(id: photo.id, urls: photo.urls, user: photo.user)  // 对于每张新照片，创建一个新的 FreshLook 对象并插入到 modelContext 中
-                modelContext.insert(newFreshLook) // 插入到数据库中
-                photos.append(newFreshLook)       // 同时将新照片添加到 photos 数组中，确保 UI 立即更新。
-                print("ViewModel: 插入新照片: \(photo.id)")
-            }
+    func fetchRandomPhotoFromAPI(count: Int) async throws {
+        print("ViewModel: 开始从API获取随机照片")
+        let newPhotos = try await api.fetchRandomPhotos(count: count)
+        print("ViewModel: API 返回的照片数量: \(newPhotos.count)")
+        
+        await MainActor.run {
             for photo in newPhotos {
                 let newFreshLook = FirstLook(id: photo.id, urls: photo.urls, user: photo.user)
                 modelContext.insert(newFreshLook)
                 photos.append(newFreshLook)
-                print("ViewModel: 插入新照片: \(photo.id), portfolioUrl: \(photo.user.portfolioUrl ?? "No portfolio")")
+                print("ViewModel: 插入新照片: \(photo.id)")
             }
-            
-            
-            try modelContext.save()
-            print("ViewModel: 保存 \(newPhotos.count) 张新照片到本地")
-        } catch {
-            errorMessage = "从 API 获取或保存照片失败: \(error.localizedDescription)"
-            print("ViewModel 错误: \(errorMessage ?? "")")
         }
+        
+        try modelContext.save()
+        print("ViewModel: 保存 \(newPhotos.count) 张新照片到本地")
+        
+        saveCachedPhotos() // 缓存照片数据
     }
     
     // 清除所有照片
@@ -144,7 +157,7 @@ class ViewModel: ObservableObject {
             try modelContext.delete(model: Topic.self)
             try modelContext.save()
             print("所有数据已清除")
-            await fetchRandomPhotoFromAPI(count: 20)
+            try await fetchRandomPhotoFromAPI(count: 20)
         } catch {
             print("清除照片时出错: \(error)")
         }
@@ -161,6 +174,7 @@ class ViewModel: ObservableObject {
         default:
             print("未知的照片类型")
         }
+        loadFavoritePhotos() // 直接调用，不需要 DispatchQueue
     }
     
     private func toggleFirstLookFavorite(_ photo: FirstLook) {
@@ -190,19 +204,17 @@ class ViewModel: ObservableObject {
         loadFavoritePhotos()
     }
     
-    
-    
     // 取消所有收藏
     func unfavoriteAllPhotos() {
         for photo in photos {
-            photo.isFavorite = false
+            updateFavoriteStatus(for: photo, isFavorite: false)
         }
-        // ADDED: 获取所有已保存的 TopicPhoto
+        // 获取所有已保存的 TopicPhoto
         let descriptor = FetchDescriptor<TopicPhoto>()
         do {
             let savedTopicPhotos = try modelContext.fetch(descriptor)
             for photo in savedTopicPhotos {
-                photo.isFavorite = false
+                updateFavoriteStatus(for: photo, isFavorite: false)
             }
         } catch {
             print("获取保存的 TopicPhoto 时出错: \(error)")
@@ -215,11 +227,21 @@ class ViewModel: ObservableObject {
         }
     }
     
+    // 更新收藏状态的通用方法
+    private func updateFavoriteStatus(for photo: any Photo, isFavorite: Bool) {
+        if let firstLook = photo as? FirstLook {
+            firstLook.isFavorite = isFavorite
+        } else if let topicPhoto = photo as? TopicPhoto {
+            topicPhoto.isFavorite = isFavorite
+        }
+        saveContext()
+    }
+    
     // 加载主题内容
-    func loadTopicsIfNeeded() async{
+    func loadTopicsIfNeeded() async {
         if topics.isEmpty {
             print("ViewModel: 主题列表为空，开始获取主题")
-            await fetchTopics()
+            await loadTopicsWithRetry()
             print("ViewModel: 主题获取完成")
         } else {
             print("ViewModel: 主题列表不为空，跳过获取")
@@ -227,25 +249,24 @@ class ViewModel: ObservableObject {
     }
     
     // 获取主题内容
-    func fetchTopics() async {
-        do {
-            print("ViewModel: 开始获取主题")
-            let newTopics = try await api.fetchTopics(perPage: 6)
-            // print("ViewModel: API 返回的原始数据: \(newTopics)")
-            
+    func fetchTopics() async throws {
+        print("ViewModel: 开始获取主题")
+        let newTopics = try await api.fetchTopics(perPage: 6)
+        
+        await MainActor.run {
+            self.topics = []  // 清空现有主题
             for topic in newTopics {
-                let newTopic = Topic(id: topic.id, slug: topic.slug, description: topic.topicDescription, isFavorite: topic.isFavorite)  // 对于每一个新主题，创建一个新的 Topic 对象并插入到 modelContext 中
-                modelContext.insert(newTopic) // 插入到数据库
-                topics.append(newTopic)       // 同时将新主添加到 topics 数组中，确保 UI 立即更新。
+                let newTopic = Topic(id: topic.id, slug: topic.slug, description: topic.topicDescription, isFavorite: topic.isFavorite)
+                modelContext.insert(newTopic)
+                self.topics.append(newTopic)
                 print("ViewModel: 插入新主题: \(topic.id)")
             }
-            
-            try modelContext.save()
-            print("ViewModel: 保存 \(newTopics.count) 个新主题到本地")
-        } catch {
-            errorMessage = "从 API 获取或保存主题失败: \(error.localizedDescription)"
-            print("ViewModel 错误: \(errorMessage ?? "")")
         }
+        
+        try modelContext.save()
+        print("ViewModel: 保存 \(newTopics.count) 个新主题到本地")
+        
+        saveCachedTopics() // 缓存主题数据
     }
     
     // 获取主题下的图片
@@ -332,20 +353,25 @@ class ViewModel: ObservableObject {
         do {
             let favoriteFirstLooks = try modelContext.fetch(firstLookDescriptor)
             let favoriteTopicPhotos = try modelContext.fetch(topicPhotoDescriptor)
-            favoritePhotos = (favoriteFirstLooks as [any Photo]) + (favoriteTopicPhotos as [any Photo])
+            let newFavorites = (favoriteFirstLooks as [any Photo]) + (favoriteTopicPhotos as [any Photo])
+            
+            // 使用 DispatchQueue.main.async 确保在主线程上更新 UI
+            self.favoritePhotos = newFavorites
+            print("收藏照片加载完成，总数：\(newFavorites.count)")
+            for (index, photo) in newFavorites.enumerated() {
+                print("收藏照片 \(index + 1): ID = \(photo.id), URL = \(photo.urls.small)")
+            }
+            self.objectWillChange.send()
+            
             print("加载收藏图片：FirstLook \(favoriteFirstLooks.count) 张，TopicPhoto \(favoriteTopicPhotos.count) 张")
             print("TopicPhoto 收藏详情：")
             for photo in favoriteTopicPhotos {
                 print("ID: \(photo.id), isFavorite: \(photo.isFavorite ?? false)")
             }
-            
-            
-            objectWillChange.send()
         } catch {
             print("加载收藏图片时出错: \(error)")
         }
     }
-    
     
     // 下载并保存原始图片
     func downloadAndSaveImage(from urlString: String, completion: @escaping (Result<Void, Error>) -> Void) {
@@ -380,7 +406,7 @@ class ViewModel: ObservableObject {
     }
     
     // 下载、裁剪并保存适应屏幕的图片
-     func downloadAndSaveDisplayImage(from urlString: String, completion: @escaping (Bool) -> Void) {
+    func downloadAndSaveDisplayImage(from urlString: String, completion: @escaping (Bool) -> Void) {
         guard let url = URL(string: urlString) else {
             completion(false)
             return
@@ -430,23 +456,23 @@ class ViewModel: ObservableObject {
         }.resume()
     }
     
-   // 下载图片并分享
+    // 下载图片并分享
     func downloadImageForSharing(from urlString: String) async throws -> URL {
         if let cachedURL = imageCache[urlString], FileManager.default.fileExists(atPath: cachedURL.path) {
             return cachedURL
         }
-
+        
         guard let url = URL(string: urlString) else {
             throw NSError(domain: "无效的 URL", code: 0, userInfo: nil)
         }
-
+        
         let (data, _) = try await URLSession.shared.data(from: url)
         guard let image = UIImage(data: data) else {
             throw NSError(domain: "无法创建图像", code: 0, userInfo: nil)
         }
-
+        
         let fileURL = cachesDirectory.appendingPathComponent("wallpaper_\(UUID().uuidString).jpg")
-
+        
         if let jpegData = image.jpegData(compressionQuality: 0.8) {
             try jpegData.write(to: fileURL)
             imageCache[urlString] = fileURL
@@ -456,7 +482,7 @@ class ViewModel: ObservableObject {
             throw NSError(domain: "无法创建JPEG数据", code: 0, userInfo: nil)
         }
     }
-
+    
     // 下载并分享图片
     func shareImage(from urlString: String) async {
         isSharing = true
@@ -481,5 +507,66 @@ class ViewModel: ObservableObject {
         }
     }
     
+    // 新增带重试机制的主题加载方法
+    private func loadTopicsWithRetry(retries: Int = 0) async {
+        do {
+            try await fetchTopics()
+        } catch {
+            if retries < maxRetries {
+                print("获取主题失败，\(retryDelay)秒后重试。重试次数: \(retries + 1)")
+                try? await Task.sleep(nanoseconds: UInt64(retryDelay * 1_000_000_000))
+                await loadTopicsWithRetry(retries: retries + 1)
+            } else {
+                print("获取主题失败，已达到最大重试次数")
+                await MainActor.run {
+                    self.errorMessage = "无法加载主题，请检查网络连接并重试"
+                }
+                loadCachedTopics() // 尝试从缓存加载主题
+            }
+        }
+    }
+    
+    // 新增缓存相关方法
+    private func saveCachedTopics() {
+        do {
+            let data = try JSONEncoder().encode(topics)
+            try data.write(to: cachesDirectory.appendingPathComponent("cachedTopics.json"))
+        } catch {
+            print("缓存主题失败: \(error)")
+        }
+    }
+    
+    //   新增缓存相关方法
+    private func loadCachedTopics() {
+        do {
+            let data = try Data(contentsOf: cachesDirectory.appendingPathComponent("cachedTopics.json"))
+            let cachedTopics = try JSONDecoder().decode([Topic].self, from: data)
+            self.topics = cachedTopics
+            print("从缓存加载了 \(cachedTopics.count) 个主题")
+        } catch {
+            print("加载缓存主题失败: \(error)")
+        }
+    }
+    
+    // 新增照片缓存相关方法
+    private func saveCachedPhotos() {
+        do {
+            let data = try JSONEncoder().encode(photos)
+            try data.write(to: cachesDirectory.appendingPathComponent("cachedPhotos.json"))
+        } catch {
+            print("缓存照片失败: \(error)")
+        }
+    }
+    
+    //  新增照片缓存相关方法
+    private func loadCachedPhotos() {
+        do {
+            let data = try Data(contentsOf: cachesDirectory.appendingPathComponent("cachedPhotos.json"))
+            let cachedPhotos = try JSONDecoder().decode([FirstLook].self, from: data)
+            self.photos = cachedPhotos
+            print("从缓存加载了 \(cachedPhotos.count) 张照片")
+        } catch {
+            print("加载缓存照片失败: \(error)")
+        }
+    }
 }
-

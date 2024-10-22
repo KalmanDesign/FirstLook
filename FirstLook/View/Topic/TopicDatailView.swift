@@ -39,6 +39,7 @@ struct TopicDatailView: View {
                                 .cornerRadius(8)
                         }
                     }
+                    .padding(.top, 12)
                     .padding(.horizontal, 12)
                 }
                 .frame(minWidth: UIScreen.main.bounds.width, alignment: .leading)
