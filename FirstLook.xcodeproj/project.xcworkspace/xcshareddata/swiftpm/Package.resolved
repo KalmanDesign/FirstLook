@@ -1,5 +1,5 @@
 {
-  "originHash" : "fb47ebd529c27a97e2db8b153fe226b1b702c15a6ec9f74eaccb2154b0993163",
+  "originHash" : "d45d223d7dff4740db187724ee101747b33ac65bb23876b94a1c25ec9b055f94",
   "pins" : [
     {
       "identity" : "kingfisher",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "c0940e241945e6378c01fbd45fd3815579d47ef5",
         "version" : "8.1.0"
+      }
+    },
+    {
+      "identity" : "swiftui-grid",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/spacenation/swiftui-grid",
+      "state" : {
+        "revision" : "623f995c6ee0e5a5ed0e104d142daeae67b0ec92",
+        "version" : "1.1.0"
       }
     },
     {

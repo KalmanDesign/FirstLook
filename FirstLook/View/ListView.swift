@@ -17,7 +17,7 @@ struct ListView: View {
     
     var body: some View {
         NavigationStack {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 WaterfallGrid(vm.photos) { photo in
                     NavigationLink(destination: ImageDetailView(photo: photo).toolbar(.hidden, for: .tabBar) .navigationBarBackButtonHidden(true)) {
                         KFImage(URL(string: photo.urls.thumb))
