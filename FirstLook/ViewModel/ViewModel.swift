@@ -45,7 +45,7 @@ class ViewModel: ObservableObject {
         self.modelContext = modelContext
         self.cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         self.cacheFile = cachesDirectory.appendingPathComponent("imageCache.plist")
-        
+        self.downloadOriginal = UserDefaults.standard.bool(forKey: "downloadOriginal")
         loadImageCache()
         
         // 延迟加载数据
@@ -56,6 +56,8 @@ class ViewModel: ObservableObject {
         }
     }
     
+    
+    // 加载收藏的照片
     private func loadInitialData() async {
         await loadPhotosWithRetry()
         await loadTopicsWithRetry()
@@ -373,6 +375,25 @@ class ViewModel: ObservableObject {
         }
     }
     
+    // 下载原始图片
+    @Published var downloadOriginal: Bool{ didSet{ UserDefaults.standard.set(downloadOriginal, forKey: "downloadOriginal") } }
+    
+    // 下载图片
+    func downloadImage(from urlString: String, completion: @escaping (Bool) -> Void) {
+        print("downloadOriginal: \(downloadOriginal)") // 添加这行日志
+        let downloadFunction = downloadOriginal ? downloadAndSaveImage : downloadAndSaveDisplayImage
+        
+        downloadFunction(urlString) { result in
+            switch result {
+            case .success:
+                completion(true)
+            case .failure(let error):
+                print("下载图片失败: \(error)") // 添加错误日志
+                completion(false)
+            }
+        }
+    }
+    
     // 下载并保存原始图片
     func downloadAndSaveImage(from urlString: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let url = URL(string: urlString) else {
@@ -406,51 +427,63 @@ class ViewModel: ObservableObject {
     }
     
     // 下载、裁剪并保存适应屏幕的图片
-    func downloadAndSaveDisplayImage(from urlString: String, completion: @escaping (Bool) -> Void) {
+    func downloadAndSaveDisplayImage(from urlString: String, completion: @escaping (Result<Void, Error>) -> Void) {
         guard let url = URL(string: urlString) else {
-            completion(false)
+            completion(.failure(NSError(domain: "无效的 URL", code: 0, userInfo: nil)))
             return
         }
         
         URLSession.shared.dataTask(with: url) { data, response, error in
             DispatchQueue.main.async {
-                if let data = data, let image = UIImage(data: data) {
-                    let screenSize = UIScreen.main.bounds.size
-                    let imageSize = image.size
-                    let scale = max(screenSize.width / imageSize.width, screenSize.height / imageSize.height)
-                    
-                    let scaledWidth = imageSize.width * scale
-                    let scaledHeight = imageSize.height * scale
-                    let xOffset = (scaledWidth - screenSize.width) / 2
-                    let yOffset = (scaledHeight - screenSize.height) / 2
-                    
-                    UIGraphicsBeginImageContextWithOptions(screenSize, false, 0)
-                    image.draw(in: CGRect(x: -xOffset, y: -yOffset, width: scaledWidth, height: scaledHeight))
-                    let croppedImage = UIGraphicsGetImageFromCurrentImageContext() ?? image
-                    UIGraphicsEndImageContext()
-                    
-                    PHPhotoLibrary.requestAuthorization { status in
-                        switch status {
-                        case .authorized, .limited:
-                            PHPhotoLibrary.shared().performChanges({
-                                PHAssetChangeRequest.creationRequestForAsset(from: croppedImage)
-                            }) { success, error in
-                                DispatchQueue.main.async {
-                                    completion(success)
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let data = data, let image = UIImage(data: data) else {
+                    completion(.failure(NSError(domain: "无法创建图像", code: 0, userInfo: nil)))
+                    return
+                }
+                
+                let screenSize = UIScreen.main.bounds.size
+                let imageSize = image.size
+                let scale = max(screenSize.width / imageSize.width, screenSize.height / imageSize.height)
+                
+                let scaledWidth = imageSize.width * scale
+                let scaledHeight = imageSize.height * scale
+                let xOffset = (scaledWidth - screenSize.width) / 2
+                let yOffset = (scaledHeight - screenSize.height) / 2
+                
+                UIGraphicsBeginImageContextWithOptions(screenSize, false, 0)
+                image.draw(in: CGRect(x: -xOffset, y: -yOffset, width: scaledWidth, height: scaledHeight))
+                let croppedImage = UIGraphicsGetImageFromCurrentImageContext() ?? image
+                UIGraphicsEndImageContext()
+                
+                PHPhotoLibrary.requestAuthorization { status in
+                    switch status {
+                    case .authorized, .limited:
+                        PHPhotoLibrary.shared().performChanges({
+                            PHAssetChangeRequest.creationRequestForAsset(from: croppedImage)
+                        }) { success, error in
+                            DispatchQueue.main.async {
+                                if success {
+                                    completion(.success(()))
+                                } else if let error = error {
+                                    completion(.failure(error))
+                                } else {
+                                    completion(.failure(NSError(domain: "未知错误", code: 0, userInfo: nil)))
                                 }
                             }
-                        case .denied, .restricted, .notDetermined:
-                            DispatchQueue.main.async {
-                                completion(false)
-                            }
-                        @unknown default:
-                            DispatchQueue.main.async {
-                                completion(false)
-                            }
+                        }
+                    case .denied, .restricted, .notDetermined:
+                        DispatchQueue.main.async {
+                            completion(.failure(NSError(domain: "没有相册访问权限", code: 0, userInfo: nil)))
+                        }
+                    @unknown default:
+                        DispatchQueue.main.async {
+                            completion(.failure(NSError(domain: "未知的授权状态", code: 0, userInfo: nil)))
                         }
                     }
-                } else {
-                    completion(false)
                 }
             }
         }.resume()

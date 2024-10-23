@@ -16,6 +16,10 @@ struct ImageDetailView: View {
     @State private var isImageLoadingFailed = false
     @State private var showToast = false
     @State private var isSharing = false
+    @State private var showDownloadToast = false
+    @State private var downloadToastMessage = ""
+
+    
     var body: some View {
         GeometryReader { geo in
             ZStack {
@@ -59,11 +63,11 @@ struct ImageDetailView: View {
                         }
                     }
                 }
-               
+                
             }
         }
         .overlay(alignment: .bottomLeading) {
-            ButtonGroup(showInfoSheet: $showInfoSheet, overlayState: $overlayState, showToast: $showToast, photo: photo, isSharing: $isSharing)
+            ButtonGroup(showInfoSheet: $showInfoSheet, overlayState: $overlayState, showToast: $showToast, photo: photo, isSharing: $isSharing, showDownloadToast: $showDownloadToast, downloadToastMessage: $downloadToastMessage)
                 .padding(.horizontal,16)
                 .padding(.bottom,40)
                 .opacity(vm.isSharing ? 0.5 : 1)
@@ -71,9 +75,16 @@ struct ImageDetailView: View {
         }
         .overlay(alignment: .top){
             if showToast{
-                ToastView(photo: photo)
+                ToastView(message: photo.isFavorite ?? false ? "Favorite successfully" : "Cancel Favorite",
+                          systemImageName: photo.isFavorite ?? false ? "heart.fill" : "heart",
+                          imageColor: photo.isFavorite ?? false ? .red : .white)
                     .offset(y: UIScreen.main.bounds.height / 2)
             }
+            if showDownloadToast{
+                ToastView(message: downloadToastMessage,imageColor: .green)
+                    .offset(y: UIScreen.main.bounds.height / 2)
+            }
+
         }
         .edgesIgnoringSafeArea(.all)
         .sheet(isPresented: $showInfoSheet) {
@@ -94,13 +105,22 @@ struct ImageDetailView: View {
 }
 
 struct ToastView: View {
-    @EnvironmentObject private var vm: ViewModel
-    let photo: any Photo // 添加了photo参数
+    let message: String
+    let systemImageName: String?
+    let imageColor: Color?
+    
+    init(message: String, systemImageName: String? = nil, imageColor: Color? = nil) {
+        self.message = message
+        self.systemImageName = systemImageName
+        self.imageColor = imageColor
+    }
+
+    
     var body: some View {
         HStack {
-            Image(systemName: photo.isFavorite ?? false ? "heart.fill" : "heart")
-                .foregroundColor(photo.isFavorite ?? false ? .red : .white)
-            Text(photo.isFavorite ?? false ? "Favorite successfully" : "Cancel Favorite") // 显示文字
+            Image(systemName: systemImageName ?? "checkmark.circle.fill")
+                .foregroundColor(imageColor ?? .white)
+            Text(message) // 显示文字
                 .foregroundColor(.white) // 设置文字颜色为白色
         }
         .padding() // 设置内边距
@@ -118,7 +138,10 @@ struct ButtonGroup: View {
     @Binding var showToast: Bool
     let photo: any Photo // 添加了photo参数
     @Binding  var isSharing: Bool
-    
+    @State private var isDownloading = false
+    @Binding var showDownloadToast: Bool
+    @Binding var downloadToastMessage: String
+
     var body: some View {
         HStack{
             Button{
@@ -158,25 +181,40 @@ struct ButtonGroup: View {
             
             // 下载按钮
             Button{
-                vm.downloadAndSaveImage(from: photo.urls.full) { result in
-                    switch result{
-                    case .success:
+                isDownloading = true
+                vm.downloadImage(from: photo.urls.full) { result in
+                    isDownloading = false
+                    if result {
+                        downloadToastMessage = "Image downloaded successfully"
                         print("图片已成功保存到相册")
-                    case .failure(let error):
-                        print("保存图片失败：\(error.localizedDescription)")
-                        
+                    } else {
+                        downloadToastMessage = "Failed to save image to album"
+                        print("保存图片失败")
+                    }
+                    showDownloadToast = true
+                    DispatchQueue.main.asyncAfter(deadline: .now()+1.4){
+                        withAnimation {
+                            showDownloadToast = false
+                        }
                     }
                 }
             }label: {
-                Image(systemName: "arrow.down")
-                    .resizable()  // 使图标可调整大小
-                    .aspectRatio(contentMode: .fit)  // 保持宽高比
-                    .frame(width: 14, height: 14)  // 设置固定大小为14
-                    .foregroundColor(.white)
-                    .padding(12)
-                    .background(Color.black.opacity(0.5))
-                    .clipShape(Circle())
+                if isDownloading {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .frame(width: 14, height: 14)
+                }else{
+                    Image(systemName: "arrow.down")
+                        .resizable()  // 使图标可调整大小
+                        .aspectRatio(contentMode: .fit)  // 保持宽高比
+                        .frame(width: 14, height: 14)  // 设置固定大小为14
+                }
             }
+            .foregroundColor(.white)
+            .foregroundColor(.white)
+            .padding(12)
+            .background(Color.black.opacity(0.5))
+            .clipShape(Circle())
             
             // 收藏按钮
             Button {

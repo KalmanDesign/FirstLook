@@ -34,6 +34,11 @@ struct ContentView: View {
                     Label("Favorites", systemImage: "heart")
                 }
                 .tag(2)
+            SettingView()
+                .tabItem {
+                    Label("Setting", systemImage: "heart")
+                }
+                .tag(3)
         }
         .environmentObject(vm)
         .onChange(of: selectedTab) { oldValue, newValue in
