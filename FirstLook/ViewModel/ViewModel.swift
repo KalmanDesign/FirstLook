@@ -41,6 +41,12 @@ class ViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var isSharing = false // 是否正在分享
     
+    @Published var isLoadingMore = false  // 是否正在加载更多
+    private var currentPage: [String: Int] = [:] // 记录当前页数
+    private let maxFreePages = 3  // 最大免费页数
+    @Published var isVIP: Bool = false // 是否是 VIP 用户
+
+    
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
         self.cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -54,6 +60,13 @@ class ViewModel: ObservableObject {
                 await self.loadInitialData()
             }
         }
+    }
+
+     // 用户购买 VIP 的方法
+    func purchaseVIP() {
+        // 这里应该包含实际的购买逻辑，可能涉及到 StoreKit 的使用
+        // 为了演示，我们只是简单地将 isVIP 设置为 true
+        isVIP = true
     }
     
     
@@ -273,7 +286,7 @@ class ViewModel: ObservableObject {
     
     // 获取主题下的图片
     func fetchTopicPhotos(topic: Topic, page: Int, perPage: Int = 10) async {
-        print("ViewModel: 开始获取主题 \(topic.id) 下的图片")
+        print("ViewModel: 开始获取主题 \(topic.id) 下的图片，页码：\(page)")
         
         // 首先检查本地数据库
         var localPhotoDescriptor = FetchDescriptor<TopicPhoto>(
@@ -291,7 +304,10 @@ class ViewModel: ObservableObject {
                 // 如果本地数据足够，直接使用本地数据
                 print("ViewModel: 使用本地缓存的 \(localPhotos.count) 张主题照片")
                 await MainActor.run {
-                    self.topicPhotos[topic.id] = localPhotos
+                    if self.topicPhotos[topic.id] == nil {
+                        self.topicPhotos[topic.id] = []
+                    }
+                    self.topicPhotos[topic.id]?.append(contentsOf: localPhotos)
                 }
                 return
             }
@@ -325,7 +341,10 @@ class ViewModel: ObservableObject {
             }
             
             await MainActor.run {
-                self.topicPhotos[topic.id] = newTopicPhotos
+                if self.topicPhotos[topic.id] == nil {
+                    self.topicPhotos[topic.id] = []
+                }
+                self.topicPhotos[topic.id]?.append(contentsOf: newTopicPhotos)
             }
             
             try modelContext.save()
@@ -602,4 +621,43 @@ class ViewModel: ObservableObject {
             print("加载缓存照片失败: \(error)")
         }
     }
+
+
+       // 检查用户是否可以加载更多页面
+    func canLoadMorePages(for topic: Topic) -> Bool {
+        if isVIP {
+            return true
+        } else {
+            return (currentPage[topic.id] ?? 0) < maxFreePages
+        }
+    }
+
+     // 修改现有的 loadMoreTopicPhotos 方法
+    func loadMoreTopicPhotos(for topic: Topic) async {
+        guard !isLoadingMore && canLoadMorePages(for: topic) else { return }
+        
+        isLoadingMore = true
+        let page = (currentPage[topic.id] ?? 0) + 1
+        
+        do {
+            let newPhotos = try await api.fetchTopicPhotos(topicIdOrSlug: topic.id, page: page)
+            await MainActor.run {
+                if topicPhotos[topic.id] == nil {
+                    topicPhotos[topic.id] = []
+                }
+                topicPhotos[topic.id]?.append(contentsOf: newPhotos)
+                currentPage[topic.id] = page
+                isLoadingMore = false
+            }
+        } catch {
+            await MainActor.run {
+                print("Error loading more photos: \(error)")
+                errorMessage = "加载更多照片时出错：\(error.localizedDescription)"
+                isLoadingMore = false
+            }
+        }
+    }
+
+
 }
+

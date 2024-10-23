@@ -99,23 +99,33 @@ class APIManager{
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             
-            // 打印响应状态码和原始数据
-            if let httpResponse = response as? HTTPURLResponse {
-                print("Response status code: \(httpResponse.statusCode)")
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.networkError
             }
-            // print("Raw response data: \(String(data: data, encoding: .utf8) ?? "Unable to convert data to string")")
+            
+            print("Response status code: \(httpResponse.statusCode)")
+            print("Response headers: \(httpResponse.allHeaderFields)")
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw APIError.serverError
+            }
+            
+            print("Raw response data: \(String(data: data, encoding: .utf8) ?? "Unable to convert data to string")")
             
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             decoder.dateDecodingStrategy = .iso8601
-            let photos = try decoder.decode([TopicPhoto].self, from: data)
-            for photo in photos {
-                print("主题照片 ID: \(photo.id), 主题照片用户名: \(photo.user.username), 主题图片简介:\(String(describing: photo.user.bio))")
+            
+            do {
+                let photos = try decoder.decode([TopicPhoto].self, from: data)
+                print("Successfully decoded \(photos.count) photos")
+                return photos
+            } catch {
+                print("Decoding error: \(error)")
+                throw APIError.decodingError
             }
-
-            return photos
         } catch {
-            print("获取主题照片时出错: \(error)")
+            print("Network request error: \(error)")
             throw APIError.networkError
         }
     }

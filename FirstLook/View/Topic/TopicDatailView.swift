@@ -15,41 +15,82 @@ struct TopicDatailView: View {
     @EnvironmentObject private var vm: ViewModel
     let topic: Topic
     
-    // 定义body属性，用于描述视图的内容
+    let columns = [
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8)
+    ]
+    
     var body: some View {
         ScrollView {
-            ZStack{
-                VStack(alignment: .leading){
-                    TopicCover(photo: vm.topicPhotos[topic.id]?.randomElement())
-                        .overlay(alignment: .bottomLeading) {
-                            Text(topic.slug.capitalized)
-                                .bold()
-                                .font(.largeTitle)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 12)
-                        }
-                    Text(topic.topicDescription ?? "dasiudhuiashdias")
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 12)
-                    WaterfallGrid(vm.topicPhotos[topic.id] ?? []) { photo in
+            VStack(alignment: .leading ,spacing: 12) {
+                TopicCover(photo: vm.topicPhotos[topic.id]?.first)
+                    .frame(height: 200)
+                    .overlay(alignment: .bottomLeading) {
+                        Text(topic.slug.capitalized)
+                            .bold()
+                            .font(.title)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                    }
+                
+                Text(topic.topicDescription ?? "No description available")
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 12)
+                    
+                
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(vm.topicPhotos[topic.id] ?? [], id: \.uniqueIdentifier) { photo in
                         NavigationLink(destination: ImageDetailView(photo: photo).navigationBarBackButtonHidden(true)) {
-                            KFImage(URL(string: photo.urls.regular)!)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .cornerRadius(8)
+                            GeometryReader { geometry in
+                                KFImage(URL(string: photo.urls.small))
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: geometry.size.width, height: geometry.size.width * 4/3)
+                                    .clipped()
+                                    .cornerRadius(10)
+                            }
+                            .aspectRatio(3/4, contentMode: .fit)
+                        }
+                        .onAppear {
+                            if photo == vm.topicPhotos[topic.id]?.last {
+                                Task {
+                                    await vm.loadMoreTopicPhotos(for: topic)
+                                }
+                            }
                         }
                     }
-                    .padding(.top, 12)
-                    .padding(.horizontal, 12)
                 }
-                .frame(minWidth: UIScreen.main.bounds.width, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                
+                if vm.isLoadingMore {
+                    ProgressView()
+                        .padding()
+                } else if !vm.canLoadMorePages(for: topic) {
+                    VStack(spacing: 8) {
+                        Text("您已经浏览了3页内容")
+                            .foregroundColor(.secondary)
+                            .font(.subheadline)
+                        if !vm.isVIP {
+                            Button("升级到 VIP 以查看更多内容") {
+                                // vm.purchaseVIP()
+                            }
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 16)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                            .font(.subheadline)
+                        }
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
             }
         }
-        .edgesIgnoringSafeArea(.all)
         .background(Color.black)
     }
 }
-
 
 struct TopicCover: View {
     let photo: TopicPhoto?
@@ -60,7 +101,6 @@ struct TopicCover: View {
             KFImage(imageURL)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(height: 320)
                 .overlay(
                     LinearGradient(
                         gradient: Gradient(colors: [.clear, overlayColor]),
@@ -69,10 +109,9 @@ struct TopicCover: View {
                     )
                 )
                 .clipped()
-        }  else {
+        } else {
             Rectangle()
                 .fill(Color.gray.opacity(0.3))
-                .frame(height: 320)
                 .overlay(
                     Image(systemName: "photo")
                         .foregroundColor(.gray)
@@ -87,6 +126,7 @@ struct TopicCover: View {
                 )
         }
     }
+    
     private var overlayColor: Color {
         colorScheme == .dark ? Color.black : Color.white
     }

@@ -172,3 +172,8 @@ struct TopicPhotoUser: Codable {
 }
 
 extension TopicPhoto: Photo {}
+extension TopicPhoto {
+    var uniqueIdentifier: String {
+        return "\(id)_\(urls.small)"
+    }
+}
