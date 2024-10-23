@@ -1,10 +1,10 @@
 import Foundation
 import Kingfisher
 
-
+// 这个扩展是为了在 ViewModel 中管理应用的缓存
 extension ViewModel{
     
-     /// 读取应用的缓存信息并以数字展示
+     /// 这个方法用于读取应用的缓存信息并以数字展示
     /// - Returns: 缓存大小的字符串表示，单位为 MB
     func readCacheSize() -> String {
         let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -28,7 +28,7 @@ extension ViewModel{
         return String(format: "%.2f MB", sizeInMB)
     }
 
-     /// 清除应用的缓存
+     /// 这个方法用于清除应用的缓存
     func clearCache() {
         let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         

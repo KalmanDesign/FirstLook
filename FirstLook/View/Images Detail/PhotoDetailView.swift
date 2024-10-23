@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+// MARK: - Kingfisher库的使用
+// 由于Kingfisher库的使用可能会导致编译错误，我们需要确保Kingfisher库已经正确安装在项目中。
+// 如果Kingfisher库未安装，可以通过CocoaPods或Swift Package Manager进行安装。
 import Kingfisher
 
 struct ImageDetailView: View {
@@ -18,12 +21,15 @@ struct ImageDetailView: View {
     @State private var isSharing = false
     @State private var showDownloadToast = false
     @State private var downloadToastMessage = ""
-
+    @State private var isShowSubsciption = false
+    
+    
     
     var body: some View {
         GeometryReader { geo in
             ZStack {
                 
+                // MARK: - 图片加载
                 KFImage(URL(string: photo.urls.full))
                     .placeholder { // 在图片加载时显示
                         ProgressView()
@@ -42,6 +48,7 @@ struct ImageDetailView: View {
                     .blur(radius: overlayState == 1 ? 10 : 0)
                     .scaleEffect(overlayState == 1 ? 1.2 : 1, anchor: .center)
                 
+                // MARK: - 图片覆盖层
                 Group {
                     if overlayState == 1 {
                         AppleAppGirdView()
@@ -52,6 +59,7 @@ struct ImageDetailView: View {
                         LockScreenView()
                     }
                 }
+                // MARK: - 分享时的覆盖层
                 if vm.isSharing {
                     ZStack {
                         Color.black.opacity(0.72)
@@ -67,24 +75,25 @@ struct ImageDetailView: View {
             }
         }
         .overlay(alignment: .bottomLeading) {
-            ButtonGroup(showInfoSheet: $showInfoSheet, overlayState: $overlayState, showToast: $showToast, photo: photo, isSharing: $isSharing, showDownloadToast: $showDownloadToast, downloadToastMessage: $downloadToastMessage)
+            ButtonGroup(showInfoSheet: $showInfoSheet, overlayState: $overlayState, showToast: $showToast, photo: photo, isSharing: $isSharing, showDownloadToast: $showDownloadToast, downloadToastMessage: $downloadToastMessage, isShowSubsciption: $isShowSubsciption)
                 .padding(.horizontal,16)
                 .padding(.bottom,40)
                 .opacity(vm.isSharing ? 0.5 : 1)
                 .disabled(vm.isSharing)
         }
+        // MARK: - 提示信息
         .overlay(alignment: .top){
+            
             if showToast{
-                ToastView(message: photo.isFavorite ?? false ? "Favorite successfully" : "Cancel Favorite",
+                ToastView(message:"\( photo.isFavorite ?? false ? "Favorite successfully" : "Cancel Favorite"), collections:\(vm.favoritePhotos.count)/8)",
                           systemImageName: photo.isFavorite ?? false ? "heart.fill" : "heart",
                           imageColor: photo.isFavorite ?? false ? .red : .white)
-                    .offset(y: UIScreen.main.bounds.height / 2)
+                .offset(y: UIScreen.main.bounds.height / 2)
             }
             if showDownloadToast{
                 ToastView(message: downloadToastMessage,imageColor: .green)
                     .offset(y: UIScreen.main.bounds.height / 2)
             }
-
         }
         .edgesIgnoringSafeArea(.all)
         .sheet(isPresented: $showInfoSheet) {
@@ -100,7 +109,9 @@ struct ImageDetailView: View {
             .padding(16)
             .presentationDetents([.height(160), .height(200)])
         }
-        
+        .sheet(isPresented: $isShowSubsciption) {
+            SubscriptionView()
+        }
     }
 }
 
@@ -114,7 +125,7 @@ struct ToastView: View {
         self.systemImageName = systemImageName
         self.imageColor = imageColor
     }
-
+    
     
     var body: some View {
         HStack {
@@ -141,7 +152,8 @@ struct ButtonGroup: View {
     @State private var isDownloading = false
     @Binding var showDownloadToast: Bool
     @Binding var downloadToastMessage: String
-
+    @Binding var isShowSubsciption: Bool
+    
     var body: some View {
         HStack{
             Button{
@@ -159,7 +171,7 @@ struct ButtonGroup: View {
             
             Spacer()
             
-            // 分享按钮 - 分享图片
+            // MARK: - 分享按钮 - 分享图片
             Button(action: {
                 Task {
                     await vm.shareImage(from: photo.urls.full)
@@ -177,9 +189,7 @@ struct ButtonGroup: View {
             .disabled(vm.isSharing)
             
             
-            
-            
-            // 下载按钮
+            // MARK: - 下载按钮
             Button{
                 isDownloading = true
                 vm.downloadImage(from: photo.urls.full) { result in
@@ -206,7 +216,7 @@ struct ButtonGroup: View {
                 }else{
                     Image(systemName: "arrow.down")
                         .resizable()  // 使图标可调整大小
-                        .aspectRatio(contentMode: .fit)  // 保持宽高比
+                        .aspectRatio(contentMode: .fit)  // ���持宽高比
                         .frame(width: 14, height: 14)  // 设置固定大小为14
                 }
             }
@@ -216,11 +226,17 @@ struct ButtonGroup: View {
             .background(Color.black.opacity(0.5))
             .clipShape(Circle())
             
-            // 收藏按钮
+            // MARK: - 收藏按钮
             Button {
                 let impact = UIImpactFeedbackGenerator(style: .rigid)
                 impact.impactOccurred()
-                vm.toggleFavorite(photo)
+                
+                if vm.hasReachedFavoriteLimit() && !(photo.isFavorite ?? false) {
+                    isShowSubsciption = true
+                } else {
+                    vm.toggleFavorite(photo)
+                }
+                
                 showToast = true
                 DispatchQueue.main.asyncAfter(deadline: .now()+1.4){
                     withAnimation {
@@ -237,7 +253,7 @@ struct ButtonGroup: View {
                     .background(Color.black.opacity(0.5))
                     .clipShape(Circle())
             }
-            // 控制sheet的显示
+            // MARK: - 控制sheet的显示
             Button {
                 let impact = UIImpactFeedbackGenerator(style: .rigid)
                 impact.impactOccurred()
@@ -253,7 +269,7 @@ struct ButtonGroup: View {
                     .clipShape(Circle())
             }
             
-            // 切换视图展示
+            // MARK: - 切换视图展示
             Button{
                 let impact = UIImpactFeedbackGenerator(style: .rigid)
                 impact.impactOccurred()
@@ -286,16 +302,6 @@ struct ButtonGroup: View {
     }
     
 }
-
-
-
-
-
-
-
-
-
-
 
 
 

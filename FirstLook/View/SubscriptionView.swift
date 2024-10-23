@@ -22,6 +22,7 @@ struct SubscriptionView: View {
                 ProText()
                 UpgradeButton()
                     .padding(.top, 24)
+                
                 Spacer()
             }
             
@@ -60,16 +61,8 @@ struct ProText: View {
 struct UpgradeButton: View {
     var body: some View {
         VStack(spacing: 24){
-            Button {
-                
-            } label: {
-                Text("Upgrade PRO for $12.8")
-                    .bold()
-                    .padding()
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .background(.white)
-                    .cornerRadius(36)
+            UpgradeButtonView.pro {
+                print("$12.8")
             }
             
             VStack(spacing: 8){

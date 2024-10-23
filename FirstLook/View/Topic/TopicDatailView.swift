@@ -14,6 +14,7 @@ struct TopicDatailView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var vm: ViewModel
     let topic: Topic
+    @State private var isShowSubsciption = false
     
     let columns = [
         GridItem(.flexible(), spacing: 8),
@@ -68,18 +69,17 @@ struct TopicDatailView: View {
                         .padding()
                 } else if !vm.canLoadMorePages(for: topic) {
                     VStack(spacing: 8) {
-                        Text("您已经浏览了3页内容")
-                            .foregroundColor(.secondary)
-                            .font(.subheadline)
                         if !vm.isVIP {
-                            Button("升级到 VIP 以查看更多内容") {
+                            Button("升级到 PRO，查看更多内容。") {
                                 // vm.purchaseVIP()
+                                isShowSubsciption.toggle()
                             }
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 10)
                             .padding(.horizontal, 16)
                             .background(Color.blue)
+                            .frame(maxWidth: .infinity)
                             .foregroundColor(.white)
-                            .cornerRadius(8)
+                            .cornerRadius(360)
                             .font(.subheadline)
                         }
                     }
@@ -89,6 +89,9 @@ struct TopicDatailView: View {
             }
         }
         .background(Color.black)
+        .sheet(isPresented: $isShowSubsciption) {
+            SubscriptionView()
+        }
     }
 }
 
